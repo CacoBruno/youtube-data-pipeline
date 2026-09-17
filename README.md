@@ -1,0 +1,199 @@
+# YouTube Data Pipeline — v0.2.0
+
+Projeto Python para descobrir vídeos por **temas e palavras-chave** e gerar bases relacionáveis de **canais**, **vídeos com transcrição** e **comentários**. O projeto consolida e refatora os notebooks originais de busca de canais, coleta de vídeos, transcrição e comentários em um pipeline único, configurável por YAML.
+
+## Saídas
+
+Cada projeto gera, em `data/<project_name>/processed/`:
+
+- `channels.parquet` / `.csv` — uma linha por canal.
+- `videos.parquet` / `.csv` — uma linha por vídeo, incluindo `transcript_text` quando a transcrição for obtida.
+- `comments.parquet` / `.csv` — comentários e replies, uma linha por `comment_id`.
+- `search_hits.parquet` / `.csv` — trilha metodológica da descoberta. Preserva por qual tema/query/ordem/janela cada vídeo foi encontrado.
+
+Também são geradas tabelas intermediárias de status de comentários, transcrições e segmentos temporais, além de um JSON de auditoria por execução.
+
+Veja também `docs/DATA_DICTIONARY.md` e `docs/METHODOLOGY.md`.
+
+## 1. Segurança antes de começar
+
+Os notebooks de origem continham chaves da API do YouTube diretamente no código. **Revogue/rotacione essas chaves no Google Cloud antes de continuar.** Este projeto não copia nenhuma chave: a credencial é lida de `YOUTUBE_API_KEY` por variável de ambiente ou `.env`, e `.env` está no `.gitignore`.
+
+## 2. Pré-requisitos
+
+- Python **3.11, 3.12 ou 3.13** (recomendado: 3.12). Python 3.14 não é usado nesta versão por compatibilidade do stack local de transcrição.
+- Uma chave de API com **YouTube Data API v3** habilitada.
+- Para o fallback padrão com Faster Whisper, não é necessário instalar FFmpeg separadamente: a decodificação é feita via PyAV.
+
+## 3. Instalação
+
+PowerShell / Windows:
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -e .
+```
+
+O `faster-whisper` já faz parte da instalação padrão porque é o fallback que garante a transcrição quando não existe legenda acessível.
+
+Para desenvolvimento/testes:
+
+```powershell
+pip install -e ".[dev]"
+pytest -q
+```
+
+## 4. Credencial
+
+Copie `.env.example` para `.env`:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Edite `.env`:
+
+```text
+YOUTUBE_API_KEY=SUA_CHAVE_NOVA_AQUI
+```
+
+Não suba `.env` para o GitHub.
+
+## 5. Configure o estudo
+
+Edite `configs/example.yaml`. A unidade central é `theme -> queries`:
+
+```yaml
+search:
+  themes:
+    credito_endividamento:
+      - "crédito"
+      - "cartão de crédito"
+      - "endividamento"
+      - "dívida"
+```
+
+As datas do YAML são tratadas como inclusivas. A API recebe o limite superior ajustado para preservar essa interpretação.
+
+`max_pages_per_query: 1` é uma escolha conservadora para o primeiro smoke test. A busca é o ponto mais restrito de quota; aumente deliberadamente depois que o desenho de queries estiver validado.
+
+## 6. Rode
+
+Valide o YAML sem chamar a API:
+
+```powershell
+youtube-pipeline validate-config configs/example.yaml
+```
+
+Pipeline completo:
+
+```powershell
+youtube-pipeline run configs/example.yaml
+```
+
+Ou execute apenas alguns stages:
+
+```powershell
+youtube-pipeline run configs/example.yaml --stages discovery,videos,channels
+```
+
+Stages disponíveis:
+
+```text
+discovery → videos → channels → transcripts → comments
+```
+
+O modo `output.resume: true` evita repetir vídeos/canais já enriquecidos e usa tabelas de status para não recapturar comentários concluídos ou desabilitados.
+
+## 7. Como a descoberta funciona
+
+Para cada combinação de:
+
+```text
+tema × query × ordem × janela de datas × página
+```
+
+o pipeline chama `search.list`, salva cada ocorrência em `search_hits` e depois deduplica `video_id` para as fases de enrichment. Portanto, um vídeo aparece uma única vez em `videos`, mas pode aparecer diversas vezes em `search_hits` — preservando o processo de descoberta para auditoria e análise metodológica.
+
+## 8. Transcrições
+
+A estratégia refatora o notebook original e segue esta ordem:
+
+1. `youtube-transcript-api`: prioriza legenda manual, depois automática; se configurado, aceita qualquer legenda disponível como fallback.
+2. `yt-dlp`: tenta obter legenda/legenda automática.
+3. `faster-whisper`: **habilitado por padrão**; quando não há legenda acessível, baixa o áudio original e faz transcrição local.
+
+O áudio é baixado sem conversão intermediária e é decodificado pelo PyAV usado pelo Faster Whisper; portanto o fallback não depende de uma instalação separada do FFmpeg.
+
+Com `retry_failed: true`, apenas vídeos com `transcript_status=success` são considerados concluídos. Falhas anteriores serão tentadas novamente em uma execução posterior.
+
+As bibliotecas de transcrição e `yt-dlp` acessam interfaces do YouTube que podem mudar ou sofrer bloqueios. Por isso o método, idioma, status e erro ficam registrados por vídeo.
+
+
+### Teste isolado de transcrição
+
+Antes de rodar centenas de vídeos, teste um `video_id` conhecido:
+
+```powershell
+youtube-pipeline test-transcript configs/example.yaml VIDEO_ID
+```
+
+O comando mostra `transcript_status`, `transcript_method`, idioma, preview e — em caso de falha — o erro de cada estratégia. Isso permite distinguir rapidamente entre ausência de legenda, bloqueio do YouTube/yt-dlp e erro local do Whisper.
+
+### Se você já rodou a v0.1
+
+Não precisa apagar os resultados anteriores. A v0.2 usa `retry_failed: true`: rode apenas a etapa de transcrições novamente:
+
+```powershell
+youtube-pipeline run configs/example.yaml --stages transcripts
+```
+
+Os vídeos com transcrição bem-sucedida serão preservados; os que estavam com `failed` serão tentados novamente e, quando derem certo, `videos.csv/parquet` será atualizado com `transcript_text`.
+
+## 9. Comentários e replies
+
+O pipeline usa `commentThreads.list` para comentários de primeiro nível. Quando `include_replies: true`, recupera as respostas de cada comentário-pai com `comments.list`, em vez de assumir que o subconjunto embutido no thread contém todas as replies.
+
+`max_per_video` limita o total de linhas de comentários + replies coletadas por vídeo em uma execução inicial. A base mantém `thread_id`, `parent_comment_id` e `is_reply`.
+
+## 10. Smoke test recomendado
+
+Antes de uma captura ampla, use:
+
+- 1 tema;
+- 2–3 queries;
+- janela curta;
+- `orders: [relevance]`;
+- `max_pages_per_query: 1`;
+- `comments.max_per_video: 50`;
+- `transcripts.use_whisper: true`.
+
+Valide quatro coisas: IDs e relações, volume recuperado, qualidade/recall das queries e taxa de sucesso das transcrições. Só depois aumente páginas, ordens, datas e comentários.
+
+## 11. Relações
+
+```text
+search_hits.video_id ───────┐
+                            ├── videos.video_id ─── comments.video_id
+                            │
+search_hits.channel_id ─────┴── channels.channel_id
+```
+
+`search_hits` é a trilha de descoberta; `videos`, `channels` e `comments` são as bases analíticas.
+
+## 12. Origem do refactor
+
+O projeto foi construído a partir dos notebooks fornecidos:
+
+- `FindChannelsYouTube.ipynb`
+- `GatheringYouTubeAllVideos.ipynb`
+- `Gathering_youtubevideosComments.ipynb`
+- `youtubeTranscripted.ipynb`
+
+A lógica aproveitada inclui paginação de busca, janelas de datas, enrichment em lotes de 50 IDs, deduplicação, armazenamento incremental e a estratégia de fallback de transcrição. Funções duplicadas, nomes de colunas inconsistentes e credenciais hardcoded não foram carregados para o projeto novo.
+
+## Próximos incrementos naturais
+
+Depois do primeiro smoke test real, os dois incrementos mais úteis são: (1) **channel expansion**, usando a playlist de uploads dos canais descobertos para aumentar recall sem depender exclusivamente da busca; e (2) um **manifest metodológico** consolidando queries, cobertura temporal, quotas, falhas e taxas de recuperação por etapa.
