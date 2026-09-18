@@ -22,6 +22,7 @@ class SearchConfig:
     window_days: int = 30
     orders: list[str] = field(default_factory=lambda: ["relevance"])
     max_pages_per_query: int = 1
+    max_results_per_page: int = 50
     region_code: str | None = "BR"
     relevance_language: str | None = "pt"
 
@@ -112,8 +113,13 @@ def load_config(path: str | Path) -> ProjectConfig:
         raise ValueError(f"search.orders inválido(s): {invalid_orders}")
     if cfg.search.window_days <= 0:
         raise ValueError("search.window_days deve ser > 0.")
+
     if cfg.search.max_pages_per_query <= 0:
         raise ValueError("search.max_pages_per_query deve ser > 0.")
+
+    if not 1 <= cfg.search.max_results_per_page <= 50:
+        raise ValueError("search.max_results_per_page deve estar entre 1 e 50.")
+    
     if cfg.comments.max_per_video <= 0:
         raise ValueError("comments.max_per_video deve ser > 0.")
     if cfg.comments.order not in {"relevance", "time"}:

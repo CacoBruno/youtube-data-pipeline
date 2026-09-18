@@ -33,7 +33,7 @@ def discover_videos(youtube, config: ProjectConfig) -> pd.DataFrame:
                             "part": "snippet",
                             "q": query,
                             "type": "video",
-                            "maxResults": 50,
+                            "maxResults": config.search.max_results_per_page,
                             "order": order,
                             "pageToken": page_token,
                             "publishedAfter": published_after,
