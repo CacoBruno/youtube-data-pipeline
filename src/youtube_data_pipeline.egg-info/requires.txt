@@ -1,0 +1,11 @@
+google-api-python-client>=2.150
+pandas>=2.2
+pyarrow>=17
+PyYAML>=6.0
+python-dotenv>=1.0
+youtube-transcript-api>=1.2
+yt-dlp>=2025.1.0
+faster-whisper>=1.1
+
+[dev]
+pytest>=8.0

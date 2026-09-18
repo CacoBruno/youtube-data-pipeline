@@ -1,5 +1,5 @@
 project:
-  name: smoke_youtube_v02
+  name: smoke_youtube_v02_small
 
 api:
   key_env: YOUTUBE_API_KEY

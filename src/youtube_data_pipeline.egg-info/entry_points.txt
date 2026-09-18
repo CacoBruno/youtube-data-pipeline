@@ -1,0 +1,2 @@
+[console_scripts]
+youtube-pipeline = youtube_pipeline.cli:main
