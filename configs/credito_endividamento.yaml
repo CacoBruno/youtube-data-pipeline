@@ -1,0 +1,64 @@
+search:
+  themes:
+
+    credito_endividamento:
+      - "endividamento"
+      - "cartão de crédito"
+      - "crédito consignado"
+
+    superendividamento_inadimplencia:
+      - "superendividamento"
+      - "inadimplência"
+      - "renegociação de dívida"
+      - "renegociar dívida"
+      - "limpar nome"
+
+    juros_credito:
+      - "juros cartão"
+      - "juros do cartão de crédito"
+      - "crédito rotativo"
+      - "juros do crédito"
+      - "custo do crédito"
+
+    causas_endividamento:
+      - "bets endividamento"
+      - "apostas endividamento"
+      - "fintech crédito"
+      - "fintech endividamento"
+      - "juros endividamento"
+
+    ia_credito:
+      - "inteligência artificial crédito"
+      - "IA crédito"
+      - "score de crédito"
+      - "algoritmo de crédito"
+      - "IA concessão de crédito"
+      - "IA cobrança"
+
+    regulacao_protecao_consumidor:
+      - "regulação do crédito"
+      - "Banco Central crédito"
+      - "LGPD crédito"
+      - "regulação inteligência artificial crédito"
+      - "proteção do consumidor crédito"
+      - "transparência crédito"
+
+    credito_responsavel_bem_estar:
+      - "crédito responsável"
+      - "bem-estar financeiro"
+      - "vulnerabilidade financeira"
+      - "educação financeira"
+      - "prevenção da inadimplência"
+      - "uso consciente do crédito"
+
+  start_date: "2023-01-01"
+  end_date: "2026-09-20"
+
+  window_days: 30
+  orders: [relevance]
+
+  max_pages_per_query: 2
+  max_results_per_page: 50
+
+  region_code: BR
+  relevance_language: pt
