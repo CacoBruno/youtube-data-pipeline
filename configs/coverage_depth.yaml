@@ -1,0 +1,54 @@
+
+project:
+  name: coverage_depth_v02
+
+api:
+  key_env: YOUTUBE_API_KEY
+  sleep_seconds: 0.25
+  stop_on_quota: true
+
+search:
+  themes:
+    credito_endividamento:
+      - "endividamento"
+      - "cartão de crédito"
+      - "crédito consignado"
+
+  start_date: "2026-09-01"
+  end_date: "2026-09-16"
+
+  window_days: 30
+  orders: [relevance]
+
+  max_pages_per_query: 2
+  max_results_per_page: 50
+
+  region_code: BR
+  relevance_language: pt
+
+transcripts:
+  enabled: true
+  languages: [pt-BR, pt, en]
+  use_ytdlp: true
+  use_whisper: true
+  retry_failed: true
+  use_any_available_caption: true
+
+  whisper_model_size: small
+  whisper_device: cpu
+  whisper_compute_type: int8
+  whisper_language: null
+  whisper_vad_filter: true
+
+  yt_dlp_cookies_from_browser: null
+
+comments:
+  enabled: true
+  include_replies: true
+  max_per_video: 20
+  order: relevance
+
+output:
+  base_dir: data
+  formats: [parquet, csv]
+  resume: true
