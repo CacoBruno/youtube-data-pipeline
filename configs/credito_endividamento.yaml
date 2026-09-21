@@ -1,3 +1,11 @@
+project:
+  name: credito_endividamento
+
+api:
+  key_env: YOUTUBE_API_KEY
+  sleep_seconds: 0.25
+  stop_on_quota: true
+
 search:
   themes:
 
