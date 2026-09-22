@@ -127,7 +127,7 @@ A estratégia refatora o notebook original e segue esta ordem:
 
 O áudio é baixado sem conversão intermediária e é decodificado pelo PyAV usado pelo Faster Whisper; portanto o fallback não depende de uma instalação separada do FFmpeg.
 
-Com `retry_failed: true`, apenas vídeos com `transcript_status=success` são considerados concluídos. Falhas anteriores serão tentadas novamente em uma execução posterior.
+Com `retry_failed: true`, apenas vídeos com `transcript_status=success` são considerados concluídos. Falhas anteriores serão tentadas novamente em uma execução posterior. A etapa de transcrições também grava um checkpoint após cada vídeo concluído em `intermediate/transcripts` e, quando houver segmentos, em `intermediate/transcript_segments`. Se a execução for interrompida, uma nova execução com `output.resume: true` reaproveita os sucessos já persistidos e continua apenas com os vídeos restantes ou falhos.
 
 As bibliotecas de transcrição e `yt-dlp` acessam interfaces do YouTube que podem mudar ou sofrer bloqueios. Por isso o método, idioma, status e erro ficam registrados por vídeo.
 
