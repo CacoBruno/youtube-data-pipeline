@@ -9,7 +9,7 @@ import pandas as pd
 from .client import build_youtube_client
 from .collectors.channels import collect_channels
 from .collectors.comments import collect_comments
-from .collectors.transcripts import collect_transcripts
+from .collectors.transcripts import collect_transcript
 from .collectors.videos import collect_videos
 from .config import ProjectConfig, load_config
 from .discovery.search import discover_videos
@@ -47,6 +47,65 @@ def _merge_transcripts_into_videos(videos: pd.DataFrame, transcripts: pd.DataFra
     if transcripts.empty or "video_id" not in transcripts.columns:
         return base
     return base.merge(transcripts[transcript_cols].drop_duplicates("video_id", keep="last"), on="video_id", how="left")
+
+
+def _collect_transcripts_with_checkpoints(
+    cfg: ProjectConfig,
+    video_ids: list[str],
+    transcripts: pd.DataFrame,
+    segments: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+    """Coleta e persiste cada transcrição antes de avançar para o próximo vídeo."""
+    successes = 0
+    failures = 0
+    methods: dict[str, int] = {}
+    processed = 0
+    total = len(video_ids)
+
+    for i, video_id in enumerate(video_ids, start=1):
+        print(f"    transcript {i}/{total} | video_id={video_id}")
+        row, row_segments = collect_transcript(video_id, cfg)
+        print(f"      -> {row.get('transcript_status')} | {row.get('transcript_method')}")
+
+        new_row = pd.DataFrame([row])
+        transcripts = upsert(transcripts, new_row, ["video_id"])
+        write_table(
+            transcripts,
+            _table_path(cfg, "intermediate", "transcripts"),
+            cfg.output.formats,
+        )
+
+        new_segments = pd.DataFrame(row_segments)
+        if not new_segments.empty:
+            segments = upsert(
+                segments,
+                new_segments,
+                ["video_id", "segment_index", "source_method"],
+            )
+            write_table(
+                segments,
+                _table_path(cfg, "intermediate", "transcript_segments"),
+                cfg.output.formats,
+            )
+
+        processed += 1
+        status = str(row.get("transcript_status") or "")
+        method = str(row.get("transcript_method") or "")
+
+        if status == "success":
+            successes += 1
+        elif status == "failed":
+            failures += 1
+
+        if method:
+            methods[method] = methods.get(method, 0) + 1
+
+    return transcripts, segments, {
+        "new_rows": processed,
+        "successes": successes,
+        "failures": failures,
+        "methods": methods,
+    }
 
 
 def run_pipeline(config_path: str | Path, stages: list[str] | None = None) -> dict:
@@ -116,29 +175,38 @@ def run_pipeline(config_path: str | Path, stages: list[str] | None = None) -> di
                 )
             else:
                 known = set(transcripts["video_id"].astype(str))
-        todo = [x for x in videos["video_id"].dropna().astype(str).tolist() if x not in known]
-        new_transcripts, new_segments = collect_transcripts(todo, cfg) if todo else (pd.DataFrame(), pd.DataFrame())
-        transcripts = upsert(transcripts, new_transcripts, ["video_id"])
-        write_table(transcripts, _table_path(cfg, "intermediate", "transcripts"), cfg.output.formats)
+
+        todo = [
+            x
+            for x in videos["video_id"].dropna().astype(str).tolist()
+            if x not in known
+        ]
 
         segments = read_table(_table_path(cfg, "intermediate", "transcript_segments"))
-        segments = upsert(segments, new_segments, ["video_id", "segment_index", "source_method"])
-        write_table(segments, _table_path(cfg, "intermediate", "transcript_segments"), cfg.output.formats)
+        checkpoint_stats = {
+            "new_rows": 0,
+            "successes": 0,
+            "failures": 0,
+            "methods": {},
+        }
+
+        if todo:
+            transcripts, segments, checkpoint_stats = _collect_transcripts_with_checkpoints(
+                cfg,
+                todo,
+                transcripts,
+                segments,
+            )
 
         videos = _merge_transcripts_into_videos(videos, transcripts)
         write_table(videos, _table_path(cfg, "processed", "videos"), cfg.output.formats)
-        successes = int((new_transcripts.get("transcript_status", pd.Series(dtype=str)) == "success").sum()) if not new_transcripts.empty else 0
-        failures = int((new_transcripts.get("transcript_status", pd.Series(dtype=str)) == "failed").sum()) if not new_transcripts.empty else 0
-        methods = (
-            new_transcripts.get("transcript_method", pd.Series(dtype=str)).value_counts(dropna=False).to_dict()
-            if not new_transcripts.empty else {}
-        )
+
         report["stages"]["transcripts"] = {
             "requested": len(todo),
-            "new_rows": len(new_transcripts),
-            "successes": successes,
-            "failures": failures,
-            "methods": methods,
+            "new_rows": checkpoint_stats["new_rows"],
+            "successes": checkpoint_stats["successes"],
+            "failures": checkpoint_stats["failures"],
+            "methods": checkpoint_stats["methods"],
             "total_rows": len(transcripts),
         }
 
