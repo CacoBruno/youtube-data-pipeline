@@ -1,0 +1,156 @@
+project:
+  name: lideres_opiniao_credito_2025_2026
+
+api:
+  key_env: YOUTUBE_API_KEY
+  sleep_seconds: 0.25
+  stop_on_quota: true
+
+search:
+  themes:
+
+    # Camada 1 — descoberta temática baseada no documento metodológico
+    credito_endividamento:
+      - "endividamento Brasil"
+      - "inadimplência Brasil"
+      - "superendividamento"
+      - "dívida brasileiros"
+      - "crédito bancos Brasil"
+      - "crédito consignado"
+      - "renegociação de dívidas"
+      - "score de crédito"
+      - "Serasa dívida"
+
+    juros_custo_credito:
+      - "juros bancos"
+      - "juros cartão de crédito"
+      - "rotativo cartão"
+      - "juros altos endividamento"
+      - "juros abusivos bancos"
+      - "custo do crédito"
+
+    narrativas_responsabilidade:
+      - "crédito fácil endividamento"
+      - "endividamento famílias renda"
+      - "como sair das dívidas educação financeira"
+      - "bancos renegociação dívida"
+      - "crédito responsável"
+      - "bem estar financeiro dívida"
+
+    regulacao_instituicoes:
+      - "Banco Central crédito"
+      - "Banco Central endividamento"
+      - "Febraban endividamento"
+      - "Procon bancos dívida"
+      - "lei superendividamento"
+
+    ia_credito:
+      - "inteligência artificial crédito bancos"
+      - "IA score de crédito"
+      - "IA concessão de crédito"
+
+    # Camada 2 — líderes prioritários definidos para o estudo
+    lider_nath_financas:
+      - "\"Nath Finanças\" endividamento"
+      - "\"Nath Finanças\" crédito"
+      - "\"Nath Finanças\" dívida"
+
+    lider_primo_rico:
+      - "\"O Primo Rico\" endividamento"
+      - "\"Primo Rico\" crédito"
+      - "\"Thiago Nigro\" juros"
+
+    lider_primo_pobre:
+      - "\"Primo Pobre\" endividamento"
+      - "\"Primo Pobre\" crédito"
+      - "\"Eduardo Feldberg\" dívida"
+
+    lider_os_socios:
+      - "\"Os Sócios\" endividamento"
+      - "\"Os Sócios\" crédito"
+      - "\"Os Sócios\" juros"
+
+    lider_nathalia_arcuri_me_poupe:
+      - "\"Nathalia Arcuri\" endividamento"
+      - "\"Me Poupe\" crédito"
+      - "\"Me Poupe\" dívida"
+
+    lider_economista_sincero:
+      - "\"Economista Sincero\" endividamento"
+      - "\"Economista Sincero\" crédito"
+      - "\"Charles Wicz\" juros"
+
+    lider_gustavo_cerbasi:
+      - "\"Gustavo Cerbasi\" endividamento"
+      - "\"Gustavo Cerbasi\" crédito"
+      - "\"Gustavo Cerbasi\" dívida"
+
+    # Camada 3 — outros grandes creators de finanças/economia para ampliar cobertura
+    lider_bruno_perini:
+      - "\"Bruno Perini\" endividamento"
+      - "\"Bruno Perini\" crédito"
+      - "\"Você MAIS Rico\" juros"
+
+    lider_investidor_sardinha:
+      - "\"Investidor Sardinha\" endividamento"
+      - "\"Investidor Sardinha\" crédito"
+      - "\"Raul Sena\" juros"
+
+    lider_gemeos_investem:
+      - "\"Gêmeos Investem\" endividamento"
+      - "\"Gêmeos Investem\" crédito"
+      - "\"Gêmeos Investem\" dívida"
+
+    lider_economirna:
+      - "\"EconoMirna\" endividamento"
+      - "\"EconoMirna\" crédito"
+      - "\"EconoMirna\" dívida"
+
+    lider_clube_do_valor:
+      - "\"Clube do Valor\" endividamento"
+      - "\"Clube do Valor\" crédito"
+      - "\"Clube do Valor\" juros"
+
+    lider_fernando_ulrich:
+      - "\"Fernando Ulrich\" endividamento"
+      - "\"Fernando Ulrich\" crédito"
+      - "\"Fernando Ulrich\" juros"
+
+  # Período fechado solicitado: 19/09/2025 a 19/09/2026, inclusive.
+  start_date: "2025-09-19"
+  end_date: "2026-09-19"
+
+  # Uma janela única reduz custo de search.list nesta primeira coleta.
+  window_days: 366
+  orders: [relevance]
+  max_pages_per_query: 1
+  max_results_per_page: 50
+
+  region_code: BR
+  relevance_language: pt
+
+# Nesta rodada não coletaremos transcrições.
+transcripts:
+  enabled: false
+  languages: [pt-BR, pt, en]
+  use_ytdlp: true
+  use_whisper: true
+  retry_failed: true
+  use_any_available_caption: true
+  whisper_model_size: small
+  whisper_device: cpu
+  whisper_compute_type: int8
+  whisper_language: null
+  whisper_vad_filter: true
+  yt_dlp_cookies_from_browser: null
+
+comments:
+  enabled: true
+  include_replies: true
+  max_per_video: 500
+  order: relevance
+
+output:
+  base_dir: data
+  formats: [parquet, csv]
+  resume: true
