@@ -250,26 +250,26 @@ def _download_audio(video_id: str, config: ProjectConfig, folder: str) -> tuple[
     return candidates[0], None
 
 
-def _whisper(video_id: str, config: ProjectConfig) -> tuple[dict | None, list[dict], dict | None]:
+def _whisper(video_id: str, config: ProjectConfig, model=None) -> tuple[dict | None, list[dict], dict | None]:
     tmp = tempfile.mkdtemp(prefix="youtube_pipeline_audio_")
     try:
-        try:
-            from faster_whisper import WhisperModel
-        except Exception as exc:
-            return None, [], {
-                "type": type(exc).__name__,
-                "message": "faster-whisper não está instalado ou não pôde ser importado. Use Python 3.11–3.13 e reinstale o projeto.",
-            }
+        if model is None:
+            try:
+                from faster_whisper import WhisperModel
+            except Exception as exc:
+                return None, [], {
+                    "type": type(exc).__name__,
+                    "message": "faster-whisper não está instalado ou não pôde ser importado. Use Python 3.11–3.13 e reinstale o projeto.",
+                }
+            model = WhisperModel(
+                config.transcripts.whisper_model_size,
+                device=config.transcripts.whisper_device,
+                compute_type=config.transcripts.whisper_compute_type,
+            )
 
         audio_path, download_error = _download_audio(video_id, config, tmp)
         if not audio_path:
             return None, [], download_error
-
-        model = WhisperModel(
-            config.transcripts.whisper_model_size,
-            device=config.transcripts.whisper_device,
-            compute_type=config.transcripts.whisper_compute_type,
-        )
         kwargs = {"vad_filter": config.transcripts.whisper_vad_filter}
         if config.transcripts.whisper_language:
             kwargs["language"] = config.transcripts.whisper_language
@@ -315,7 +315,7 @@ def _whisper(video_id: str, config: ProjectConfig) -> tuple[dict | None, list[di
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def collect_transcript(video_id: str, config: ProjectConfig) -> tuple[dict, list[dict]]:
+def collect_transcript(video_id: str, config: ProjectConfig, whisper_model=None) -> tuple[dict, list[dict]]:
     errors: dict[str, dict] = {}
 
     row, segments, error = _transcript_api(
@@ -336,7 +336,7 @@ def collect_transcript(video_id: str, config: ProjectConfig) -> tuple[dict, list
             errors["yt_dlp_subtitle"] = error
 
     if config.transcripts.use_whisper:
-        row, segments, error = _whisper(video_id, config)
+        row, segments, error = _whisper(video_id, config, model=whisper_model)
         if row:
             return row, segments
         if error:
