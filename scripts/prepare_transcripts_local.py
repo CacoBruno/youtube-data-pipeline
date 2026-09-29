@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -19,7 +19,15 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--config", required=True)
     parser.add_argument("--videos", required=True)
     parser.add_argument("--output-dir", required=True)
-    parser.add_argument("--workers", type=int, default=2)
+    # Mantido por compatibilidade com comandos anteriores. A preparação é
+    # deliberadamente serial para reduzir risco de rate limit/IP block.
+    parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument(
+        "--sleep-seconds",
+        type=float,
+        default=5.0,
+        help="Pausa entre vídeos para reduzir pressão sobre o YouTube.",
+    )
     parser.add_argument("--limit", type=int, default=None)
     return parser.parse_args()
 
@@ -54,6 +62,25 @@ def _load_latest(path: Path) -> dict[str, dict]:
             if video_id:
                 latest[video_id] = rec
     return latest
+
+
+def _contains_rate_limit(value) -> bool:
+    """Detecta sinais observáveis de bloqueio/rate limit sem mascarar outros erros."""
+    if value is None:
+        return False
+    if isinstance(value, dict):
+        return any(_contains_rate_limit(v) for v in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_contains_rate_limit(v) for v in value)
+    text = str(value).lower()
+    signals = (
+        "ipblocked",
+        "too many requests",
+        "http error 429",
+        "sign in to confirm you’re not a bot",
+        "sign in to confirm you're not a bot",
+    )
+    return any(signal in text for signal in signals)
 
 
 def _prepare_one(video_id: str, config_path: str, audio_dir: str) -> dict:
@@ -128,28 +155,43 @@ def main() -> None:
     print(f"workers rede   : {args.workers}")
     print("=" * 72)
 
-    with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        futures = {
-            pool.submit(_prepare_one, video_id, args.config, str(audio_dir)): video_id
-            for video_id in pending
-        }
-        with checkpoint.open("a", encoding="utf-8") as fh:
-            for future in as_completed(futures):
-                video_id = futures[future]
-                try:
-                    rec = future.result()
-                except Exception as exc:
-                    rec = {
-                        "video_id": video_id,
-                        "status": "failed",
-                        "captured_at": utc_now_iso(),
-                        "row": None,
-                        "audio_file": None,
-                        "error": {"type": type(exc).__name__, "message": str(exc)},
-                    }
-                fh.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
-                fh.flush()
-                print(f"{video_id} | {rec.get('status')}", flush=True)
+    if args.workers != 1:
+        print(
+            "AVISO: --workers foi mantido por compatibilidade, mas esta versão "
+            "processa de forma serial para reduzir bloqueios.",
+            flush=True,
+        )
+
+    stopped_by_rate_limit = False
+    with checkpoint.open("a", encoding="utf-8") as fh:
+        for position, video_id in enumerate(pending, start=1):
+            try:
+                rec = _prepare_one(video_id, args.config, str(audio_dir))
+            except Exception as exc:
+                rec = {
+                    "video_id": video_id,
+                    "status": "failed",
+                    "captured_at": utc_now_iso(),
+                    "row": None,
+                    "audio_file": None,
+                    "error": {"type": type(exc).__name__, "message": str(exc)},
+                }
+
+            fh.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
+            fh.flush()
+            print(f"{video_id} | {rec.get('status')}", flush=True)
+
+            if rec.get("status") == "failed" and _contains_rate_limit(rec.get("error")):
+                stopped_by_rate_limit = True
+                print(
+                    "RATE LIMIT/IP BLOCK detectado. Execução interrompida "
+                    "sem consumir os demais vídeos pendentes.",
+                    flush=True,
+                )
+                break
+
+            if position < len(pending) and args.sleep_seconds > 0:
+                time.sleep(args.sleep_seconds)
 
     latest = _load_latest(checkpoint)
     counts: dict[str, int] = {}
@@ -163,6 +205,8 @@ def main() -> None:
         "prepared_records": len(latest),
         "status_counts": counts,
         "audio_dir": str(audio_dir),
+        "stopped_by_rate_limit": stopped_by_rate_limit,
+        "sleep_seconds": args.sleep_seconds,
     }
     (output_dir / "prepare_summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2),
