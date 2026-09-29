@@ -11,6 +11,7 @@ search:
 
     # Camada 1 — descoberta temática baseada no documento metodológico
     credito_endividamento:
+      - "endividamento"
       - "endividamento Brasil"
       - "inadimplência Brasil"
       - "superendividamento"
