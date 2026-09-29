@@ -66,7 +66,11 @@ def _load_latest_records(output_dir: Path) -> dict[str, dict]:
                     continue
                 video_id = str(rec.get("video_id") or "").strip()
                 if video_id:
-                    latest[video_id] = rec
+                    previous = latest.get(video_id)
+                    previous_ts = str((previous or {}).get("completed_at") or "")
+                    current_ts = str(rec.get("completed_at") or "")
+                    if previous is None or current_ts >= previous_ts:
+                        latest[video_id] = rec
     return latest
 
 
@@ -204,7 +208,10 @@ def _consolidate(videos: pd.DataFrame, output_dir: Path) -> dict:
             else 0
         ),
         "methods": (
-            transcripts["transcript_method"].value_counts(dropna=False).to_dict()
+            {
+                str(method): int(count)
+                for method, count in transcripts["transcript_method"].value_counts(dropna=False).items()
+            }
             if not transcripts.empty and "transcript_method" in transcripts.columns
             else {}
         ),
@@ -252,7 +259,9 @@ def main() -> None:
 
     if pending:
         ctx = mp.get_context("spawn")
-        task_queue = ctx.Queue(maxsize=max(32, len(gpu_ids) * 8))
+        # Fila sem limite pratico: se um worker falhar na inicializacao, o processo
+        # principal ainda consegue terminar o enqueue e diagnosticar os exit codes.
+        task_queue = ctx.Queue()
 
         workers = [
             ctx.Process(
@@ -288,11 +297,17 @@ def main() -> None:
             if worker.exitcode not in (0, None)
         ]
         if failed_workers:
-            print(f"AVISO: workers com falha: {failed_workers}", file=sys.stderr)
+            print(f"ERRO: workers com falha: {failed_workers}", file=sys.stderr)
+
+    else:
+        failed_workers = []
 
     summary = _consolidate(videos, output_dir)
     print("\nRESUMO CONSOLIDADO")
     print(json.dumps(summary, ensure_ascii=False, indent=2, default=str))
+
+    if failed_workers:
+        raise RuntimeError(f"Worker(s) GPU falharam: {failed_workers}")
 
 
 if __name__ == "__main__":
